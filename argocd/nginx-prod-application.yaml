@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-prod
+  namespace: argocd
+  annotations:
+    kargo.akuity.io/authorized-stage: nginx:prod
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/janushanth/gitops-argocd-kargo-demo.git
+    targetRevision: main
+    path: gitops/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nginx-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

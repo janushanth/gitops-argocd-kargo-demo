@@ -1,0 +1,14 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: nginx
+  namespace: nginx
+spec:
+  subscriptions:
+    - image:
+        repoURL: public.ecr.aws/docker/library/nginx
+        imageSelectionStrategy: SemVer
+        strictSemvers: true
+        constraint: ">=1.28.0 <1.29.0"
+        allowTagsRegexes:
+          - ^1\.28\.\d+$

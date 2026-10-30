@@ -1,0 +1,51 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: test
+  namespace: nginx
+  annotations:
+    kargo.akuity.io/color: "#2a9d8f"
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: nginx
+      sources:
+        direct: true
+  promotionTemplate:
+    spec:
+      vars:
+        - name: gitRepo
+          value: https://github.com/janushanth/gitops-argocd-kargo-demo.git
+        - name: imageRepo
+          value: public.ecr.aws/docker/library/nginx
+      steps:
+        - uses: git-clone
+          config:
+            repoURL: ${{ vars.gitRepo }}
+            checkout:
+              - branch: main
+                path: ./src
+        - uses: yaml-update
+          as: update-image
+          config:
+            path: ./src/gitops/test/deployment.yaml
+            updates:
+              - key: spec.template.spec.containers.0.image
+                value: ${{ vars.imageRepo }}:${{ imageFrom(vars.imageRepo).Tag }}
+        - uses: git-commit
+          config:
+            path: ./src
+            message: ${{ outputs['update-image'].commitMessage }}
+        - uses: git-push
+          config:
+            path: ./src
+            targetBranch: main
+        - uses: argocd-update
+          config:
+            apps:
+              - name: nginx-test
+        - uses: argocd-wait
+          config:
+            apps:
+              - name: nginx-test
