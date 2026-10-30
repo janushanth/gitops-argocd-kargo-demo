@@ -15,20 +15,24 @@ The Warehouse accepts only tags matching `^1\.28\.\d+$`. Alpine, perl, and other
 
 | Path | Purpose |
 |---|---|
-| `install/` | Installs cert-manager, Argo CD, and Kargo on the `docker-desktop` context |
+| `install/install.ps1` | Installs cert-manager, Argo CD, and Kargo on the `docker-desktop` context |
+| `install/cleanup.ps1` | Removes that install and puts the nginx tags back to `1.27.5` |
 | `argocd/` | Applications that sync `gitops/test` and `gitops/prod` |
 | `kargo/` | Project, Warehouse, and test/prod Stages |
 | `gitops/` | Nginx Deployments. Kargo updates the image tag in these files |
 
 ## Install
 
-Kubernetes must be enabled in Docker Desktop. The script refuses to run unless the node name is `docker-desktop`.
+Kubernetes must be enabled in Docker Desktop. Both scripts refuse to run unless the node name is `docker-desktop`.
+
+PowerShell on this machine blocks local scripts. Allow them for the current window only. This does not change the system policy, and it ends when the window closes.
 
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install\install.ps1
 ```
 
-Create a GitHub personal access token that can push to this repo. Do not commit the token.
+Create a GitHub personal access token that can push to this repo. Do not commit the token. Run this in the same window, after the policy command above.
 
 ```powershell
 .\install\kargo\create-git-secret.ps1 -Token "<github-pat>"
@@ -53,3 +57,16 @@ These passwords are the public local-only values from the [Kargo quickstart](htt
 2. The Kargo Warehouse shows Freight for the newest `1.28.x` tag. Git is still on `1.27.5`.
 3. The test Stage promotes on its own: one commit changes `gitops/test/deployment.yaml`, then Argo CD rolls the test pod.
 4. Prod stays on `1.27.5` until you promote the prod Stage in the Kargo UI. That writes `gitops/prod/deployment.yaml`.
+
+## Clean up for the next demo
+
+After a demo, remove Argo CD, Kargo, cert-manager, and the nginx namespaces from Docker Desktop. Other workloads on that cluster are left in place. The script also commits and pushes the nginx tags back to `1.27.5`, because Kargo will have changed them on `main`.
+
+Run it in a window where the execution policy was already set, or set it again:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install\cleanup.ps1
+```
+
+Then, for the next team, run `.\install\install.ps1` and create the Git secret again.
