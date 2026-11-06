@@ -1,72 +1,96 @@
 # gitops-argocd-kargo-demo
 
-Local Docker Desktop demo. Argo CD deploys public nginx from this repo. Kargo promotes a newer tag by committing to `main`.
+Local Docker Desktop demo.
 
-Image: `public.ecr.aws/docker/library/nginx`
+GitHub Actions builds the Hello World image, tags it `1.0.<run>`, and pushes it to Sonatype Nexus. Kargo sees that tag and promotes it. Argo CD deploys it. Argo CD also installs Kargo.
+
+```text
+hello-world/Dockerfile
+  -> GitHub Actions
+  -> Nexus  nexus.example.com:8082/hello-world:1.0.N
+  -> Kargo Warehouse
+  -> promote test (automatic) -> gitops/test
+  -> promote prod (manual)    -> gitops/prod
+  -> Argo CD rolls the pods
+```
+
+Replace `nexus.example.com:8082` in this repo with your Nexus Docker host and port before the first install. Use that same host:port as the GitHub secret `NEXUS_REGISTRY`. The image name is `hello-world`.
 
 | Environment | Manifest | Starts at | Promotion |
 |---|---|---|---|
-| test | `gitops/test/deployment.yaml` | `1.27.5` | Automatic when a `1.28.x` tag exists |
-| prod | `gitops/prod/deployment.yaml` | `1.27.5` | Manual in the Kargo UI, after test |
-
-The Warehouse accepts only tags matching `^1\.28\.\d+$`. Alpine, perl, and other nginx tags are ignored.
+| test | `gitops/test/deployment.yaml` | `0.0.0` | Automatic for tags `1.0.N` |
+| prod | `gitops/prod/deployment.yaml` | `0.0.0` | Manual in the Kargo UI, after test |
 
 ## What is in this repo
 
 | Path | Purpose |
 |---|---|
-| `install/install.ps1` | Installs cert-manager, Argo CD, and Kargo on the `docker-desktop` context |
-| `install/cleanup.ps1` | Removes that install and puts the nginx tags back to `1.27.5` |
-| `argocd/` | Applications that sync `gitops/test` and `gitops/prod` |
-| `kargo/` | Project, Warehouse, and test/prod Stages |
-| `gitops/` | Nginx Deployments. Kargo updates the image tag in these files |
+| `hello-world/Dockerfile` | Hello World page. The image tag is baked into the page |
+| `.github/workflows/build-publish.yml` | Builds and pushes `1.0.<run>` to Nexus. Ignores Kargo commits under `gitops/` |
+| `install/install.ps1` | Installs cert-manager and Argo CD. Argo CD installs Kargo |
+| `install/kargo/values.yaml` | Helm values Argo CD uses for Kargo |
+| `install/cleanup.ps1` | Removes the demo and puts the image tag back to `0.0.0` |
+| `argocd/kargo-application.yaml` | Argo CD Application for the Kargo Helm chart |
+| `argocd/kargo-config-application.yaml` | Argo CD Application for the Kargo Project, Warehouse, and Stages |
+| `argocd/hello-world-*-application.yaml` | Argo CD Applications for test and prod |
+| `kargo/` | Kargo Project `hello-world`, Warehouse, and Stages |
+| `gitops/` | Deployments. Kargo updates the image tag in these files |
+
+## GitHub secrets
+
+On the GitHub repository, add these Actions secrets. Do not commit them.
+
+| Secret | Value |
+|---|---|
+| `NEXUS_REGISTRY` | Nexus Docker host:port, for example `nexus.example.com:8082` |
+| `NEXUS_USERNAME` | Nexus user that can push to the Docker hosted repository |
+| `NEXUS_PASSWORD` | Password or token for that user |
+
+A push that changes `hello-world/` runs the workflow. The page at test and prod shows `version 1.0.N` after promotion.
 
 ## Install
 
-Kubernetes must be enabled in Docker Desktop. Both scripts refuse to run unless the node name is `docker-desktop`.
-
-PowerShell on this machine blocks local scripts. Allow them for the current window only. This does not change the system policy, and it ends when the window closes.
+Run cleanup first if this cluster already has the earlier nginx demo. Kubernetes must be enabled in Docker Desktop. Scripts refuse to run unless the node name is `docker-desktop`.
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install\install.ps1
 ```
 
-Create a GitHub personal access token that can push to this repo. Do not commit the token. Run this in the same window, after the policy command above.
+In Argo CD you should see `kargo`, `kargo-config`, `hello-world-test`, and `hello-world-prod`. Kargo itself is the `kargo` Application. Its UI is separate.
+
+After those Applications are Synced, create the local secrets. Do not paste the tokens into chat.
 
 ```powershell
 .\install\kargo\create-git-secret.ps1 -Token "<github-pat>"
+.\install\nexus\create-registry-secrets.ps1 -Registry "<host:port>" -Username "<user>" -Password "<password>"
 ```
 
-Create that secret before the first promotion. Test promotion writes to `main` and fails without it.
+The Git secret lets Kargo push promotion commits. The Nexus secrets let the cluster pull the image and let Kargo list tags. `insecureSkipTLSVerify` is set because Docker Desktop is behind TLS inspection. It is for this local demo only.
 
 ## UIs
 
-These passwords are the public local-only values from the [Kargo quickstart](https://docs.kargo.io/quickstart). They are for this Docker Desktop cluster.
+These passwords are the public local-only values from the [Kargo quickstart](https://docs.kargo.io/quickstart).
 
 | UI | URL | Login |
 |---|---|---|
 | Argo CD | http://localhost:31080 | `admin` / `admin` |
 | Kargo | http://localhost:31081 | password `admin` |
-| nginx test | http://localhost:31083 | |
-| nginx prod | http://localhost:31084 | |
+| Hello World test | http://localhost:31083 | |
+| Hello World prod | http://localhost:31084 | |
 
 ## What you should see
 
-1. Both Argo CD apps are Synced. Both pods run tag `1.27.5`.
-2. The Kargo Warehouse shows Freight for the newest `1.28.x` tag. Git is still on `1.27.5`.
-3. The test Stage promotes on its own: one commit changes `gitops/test/deployment.yaml`, then Argo CD rolls the test pod.
-4. Prod stays on `1.27.5` until you promote the prod Stage in the Kargo UI. That writes `gitops/prod/deployment.yaml`.
+1. Argo CD shows the Kargo Helm release and the two Hello World Applications.
+2. After the GitHub workflow publishes `1.0.N`, the Kargo project `hello-world` shows that Freight.
+3. Test promotes on its own and commits the tag into `gitops/test/deployment.yaml`. Argo CD rolls test.
+4. Prod stays on the old tag until you promote the prod Stage. That commits `gitops/prod/deployment.yaml`.
 
-## Clean up for the next demo
-
-After a demo, remove Argo CD, Kargo, cert-manager, and the nginx namespaces from Docker Desktop. Other workloads on that cluster are left in place. The script also commits and pushes the nginx tags back to `1.27.5`, because Kargo will have changed them on `main`.
-
-Run it in a window where the execution policy was already set, or set it again:
+## Clean up
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install\cleanup.ps1
 ```
 
-Then, for the next team, run `.\install\install.ps1` and create the Git secret again.
+This removes Argo CD, Kargo, cert-manager, and the Hello World namespaces from Docker Desktop. It also pushes the image tags in Git back to `0.0.0`.

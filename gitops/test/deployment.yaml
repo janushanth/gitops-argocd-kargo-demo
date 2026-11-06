@@ -1,20 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx
-  namespace: nginx-test
+  name: hello-world
+  namespace: hello-world-test
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx
+      app: hello-world
   template:
     metadata:
       labels:
-        app: nginx
+        app: hello-world
     spec:
+      imagePullSecrets:
+        - name: nexus-pull
       containers:
-        - name: nginx
-          image: public.ecr.aws/docker/library/nginx:1.27.5
+        - name: hello-world
+          image: nexus.example.com:8082/hello-world:0.0.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 80

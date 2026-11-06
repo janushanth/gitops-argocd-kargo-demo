@@ -1,14 +1,17 @@
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
 metadata:
-  name: nginx
-  namespace: nginx
+  name: hello-world
+  namespace: hello-world
 spec:
   subscriptions:
     - image:
-        repoURL: public.ecr.aws/docker/library/nginx
+        # Replace nexus.example.com:8082 with your Nexus Docker host:port.
+        # The GitHub Actions secret NEXUS_REGISTRY must be that same host:port.
+        repoURL: nexus.example.com:8082/hello-world
+        insecureSkipTLSVerify: true
         imageSelectionStrategy: SemVer
         strictSemvers: true
-        constraint: ">=1.28.0 <1.29.0"
+        constraint: ">=1.0.0"
         allowTagsRegexes:
-          - ^1\.28\.\d+$
+          - ^1\.0\.\d+$

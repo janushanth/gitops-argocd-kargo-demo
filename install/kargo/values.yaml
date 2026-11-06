@@ -1,0 +1,22 @@
+# Local Docker Desktop values. Passwords match the public Kargo quickstart
+# and are only for this laptop demo.
+api:
+  service:
+    type: NodePort
+    nodePort: 31081
+  tls:
+    enabled: false
+  adminAccount:
+    passwordHash: "$2a$10$Zrhhie4vLz5ygtVSaif6o.qN36jgs6vjtMBdM6yrU1FOeiAAMMxOm"
+    tokenSigningKey: iwishtowashmyirishwristwatch
+
+database:
+  postgres:
+    password: kargo
+
+externalWebhooksServer:
+  service:
+    type: NodePort
+    nodePort: 31082
+  tls:
+    enabled: false

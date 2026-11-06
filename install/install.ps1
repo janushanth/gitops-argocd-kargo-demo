@@ -1,4 +1,5 @@
-# Installs cert-manager, Argo CD, and Kargo on Docker Desktop only.
+# Installs cert-manager and Argo CD on Docker Desktop.
+# Argo CD then installs Kargo and syncs the Hello World apps.
 # Chart versions and the local admin password match the public Kargo quickstart:
 # https://github.com/akuity/kargo/blob/main/hack/quickstart/install.sh
 $ErrorActionPreference = "Stop"
@@ -34,30 +35,20 @@ helm install argocd argo-cd `
     --set 'server.extraArgs={--insecure}' `
     --wait
 
-helm install kargo `
-    oci://ghcr.io/akuity/kargo-charts/kargo `
-    --kube-context $context `
-    --namespace kargo `
-    --create-namespace `
-    --set api.service.type=NodePort `
-    --set api.service.nodePort=31081 `
-    --set api.tls.enabled=false `
-    --set 'api.adminAccount.passwordHash=$2a$10$Zrhhie4vLz5ygtVSaif6o.qN36jgs6vjtMBdM6yrU1FOeiAAMMxOm' `
-    --set api.adminAccount.tokenSigningKey=iwishtowashmyirishwristwatch `
-    --set database.postgres.password=kargo `
-    --set externalWebhooksServer.service.type=NodePort `
-    --set externalWebhooksServer.service.nodePort=31082 `
-    --set externalWebhooksServer.tls.enabled=false `
-    --wait
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
-kubectl --context $context apply -f (Join-Path $repoRoot "kargo\project.yaml")
-kubectl --context $context -n nginx wait --for=jsonpath="{.status.phase}"=Active namespace/nginx --timeout=120s
-kubectl --context $context apply -f (Join-Path $repoRoot "kargo")
-kubectl --context $context apply -f (Join-Path $repoRoot "argocd")
+kubectl --context $context apply -f (Join-Path $repoRoot "argocd\repository.yaml")
+kubectl --context $context apply -f (Join-Path $repoRoot "argocd\kargo-application.yaml")
+if ($LASTEXITCODE -ne 0) { throw "Could not apply the Kargo Argo CD Application." }
+kubectl --context $context -n kargo wait --for=condition=available deployment/kargo-api --timeout=600s
+if ($LASTEXITCODE -ne 0) { throw "Kargo did not become ready. Check the kargo Application in Argo CD." }
+kubectl --context $context apply -f (Join-Path $repoRoot "argocd\kargo-config-application.yaml")
+kubectl --context $context apply -f (Join-Path $repoRoot "argocd\hello-world-test-application.yaml")
+kubectl --context $context apply -f (Join-Path $repoRoot "argocd\hello-world-prod-application.yaml")
+if ($LASTEXITCODE -ne 0) { throw "Could not apply the Hello World Argo CD Applications." }
 
 Write-Host ""
 Write-Host "Argo CD: http://localhost:31080  admin / admin"
 Write-Host "Kargo:   http://localhost:31081  password admin"
-Write-Host "Create the Git push secret before promotion:"
+Write-Host "Create the Git push secret and the Nexus pull secret before promotion:"
 Write-Host "  .\install\kargo\create-git-secret.ps1 -Token <github-pat>"
+Write-Host "  .\install\nexus\create-registry-secrets.ps1 -Registry <host:port> -Username <user> -Password <password>"

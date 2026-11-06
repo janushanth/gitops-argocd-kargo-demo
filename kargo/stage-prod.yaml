@@ -2,14 +2,14 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
   name: prod
-  namespace: nginx
+  namespace: hello-world
   annotations:
     kargo.akuity.io/color: "#e76f51"
 spec:
   requestedFreight:
     - origin:
         kind: Warehouse
-        name: nginx
+        name: hello-world
       sources:
         stages:
           - test
@@ -19,7 +19,7 @@ spec:
         - name: gitRepo
           value: https://github.com/janushanth/gitops-argocd-kargo-demo.git
         - name: imageRepo
-          value: public.ecr.aws/docker/library/nginx
+          value: nexus.example.com:8082/hello-world
       steps:
         - uses: git-clone
           config:
@@ -45,8 +45,8 @@ spec:
         - uses: argocd-update
           config:
             apps:
-              - name: nginx-prod
+              - name: hello-world-prod
         - uses: argocd-wait
           config:
             apps:
-              - name: nginx-prod
+              - name: hello-world-prod

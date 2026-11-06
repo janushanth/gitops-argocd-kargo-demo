@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nginx-test
+  name: hello-world-test
   namespace: argocd
   annotations:
-    kargo.akuity.io/authorized-stage: nginx:test
+    kargo.akuity.io/authorized-stage: hello-world:test
 spec:
   project: default
   source:
@@ -13,7 +13,7 @@ spec:
     path: gitops/test
   destination:
     server: https://kubernetes.default.svc
-    namespace: nginx-test
+    namespace: hello-world-test
   syncPolicy:
     automated:
       prune: true

@@ -1,8 +1,8 @@
 apiVersion: kargo.akuity.io/v1alpha1
 kind: ProjectConfig
 metadata:
-  name: nginx
-  namespace: nginx
+  name: hello-world
+  namespace: hello-world
 spec:
   promotionPolicies:
     - stageSelector:

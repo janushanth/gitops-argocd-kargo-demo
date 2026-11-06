@@ -28,12 +28,15 @@ function Remove-HelmRelease {
     }
 }
 
-# Stop the controllers before deleting the app namespaces, so nothing recreates them.
-Remove-HelmRelease -Name "kargo" -Namespace "kargo"
+# Stop Argo CD first so it cannot recreate Kargo, then remove the Helm releases.
 Remove-HelmRelease -Name "argocd" -Namespace "argocd"
+Remove-HelmRelease -Name "kargo" -Namespace "kargo"
 Remove-HelmRelease -Name "cert-manager" -Namespace "cert-manager"
 
 $namespaces = @(
+    "hello-world-test",
+    "hello-world-prod",
+    "hello-world",
     "nginx-test",
     "nginx-prod",
     "nginx",
@@ -73,8 +76,8 @@ foreach ($crd in $crdList.items) {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$imagePattern = "image:\s*public\.ecr\.aws/docker/library/nginx:\S+"
-$imageValue = "image: public.ecr.aws/docker/library/nginx:1.27.5"
+$imagePattern = "image:\s*nexus\.example\.com:8082/hello-world:\S+"
+$imageValue = "image: nexus.example.com:8082/hello-world:0.0.0"
 $tagFiles = @(
     "gitops/test/deployment.yaml",
     "gitops/prod/deployment.yaml"
@@ -94,13 +97,13 @@ try {
         }
     }
     if ($reset) {
-        git commit -m "Reset nginx image tags to 1.27.5 for the next demo."
+        git commit -m "Reset Hello World image tags to 0.0.0 for the next demo."
         if ($LASTEXITCODE -ne 0) { throw "git commit of the tag reset failed" }
         git push origin HEAD
         if ($LASTEXITCODE -ne 0) { throw "git push of the tag reset failed" }
-        Write-Host "Pushed nginx tags back to 1.27.5."
+        Write-Host "Pushed Hello World tags back to 0.0.0."
     } else {
-        Write-Host "Nginx tags are already 1.27.5."
+        Write-Host "Hello World tags are already 0.0.0."
     }
 } finally {
     Pop-Location
