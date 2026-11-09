@@ -5,16 +5,35 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  sources:
-    - repoURL: ghcr.io/akuity/kargo-charts
-      chart: kargo
-      targetRevision: 1.12.5
-      helm:
-        valueFiles:
-          - $values/install/kargo/values.yaml
-    - repoURL: https://github.com/janushanth/gitops-argocd-kargo-demo.git
-      targetRevision: main
-      ref: values
+  source:
+    # Chart vendored in this repo (helm pull of kargo 1.12.5), so Argo CD
+    # reads it from GitHub instead of ghcr.io, which the corporate TLS
+    # inspection breaks inside the cluster.
+    repoURL: https://github.com/janushanth/gitops-argocd-kargo-demo.git
+    targetRevision: main
+    path: install/kargo/chart/kargo
+    helm:
+      releaseName: kargo
+      valuesObject:
+        api:
+          service:
+            type: NodePort
+            nodePort: 31081
+          tls:
+            enabled: false
+          adminAccount:
+            # Public local-only values from the Kargo quickstart.
+            passwordHash: "$2a$10$Zrhhie4vLz5ygtVSaif6o.qN36jgs6vjtMBdM6yrU1FOeiAAMMxOm"
+            tokenSigningKey: iwishtowashmyirishwristwatch
+        database:
+          postgres:
+            password: kargo
+        externalWebhooksServer:
+          service:
+            type: NodePort
+            nodePort: 31082
+          tls:
+            enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: kargo

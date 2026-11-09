@@ -28,9 +28,9 @@ Replace `nexus.example.com:8082` in this repo with your Nexus Docker host and po
 | `hello-world/Dockerfile` | Hello World page. The image tag is baked into the page |
 | `.github/workflows/build-publish.yml` | Builds and pushes `1.0.<run>` to Nexus. Ignores Kargo commits under `gitops/` |
 | `install/install.ps1` | Installs cert-manager and Argo CD. Argo CD installs Kargo |
-| `install/kargo/values.yaml` | Helm values Argo CD uses for Kargo |
+| `install/kargo/chart/kargo` | Kargo 1.12.5 Helm chart, vendored from `ghcr.io` so Argo CD reads it from GitHub |
 | `install/cleanup.ps1` | Removes the demo and puts the image tag back to `0.0.0` |
-| `argocd/kargo-application.yaml` | Argo CD Application for the Kargo Helm chart |
+| `argocd/kargo-application.yaml` | Argo CD Application for Kargo. Its Helm values are inline in this file |
 | `argocd/kargo-config-application.yaml` | Argo CD Application for the Kargo Project, Warehouse, and Stages |
 | `argocd/hello-world-*-application.yaml` | Argo CD Applications for test and prod |
 | `kargo/` | Kargo Project `hello-world`, Warehouse, and Stages |
@@ -85,6 +85,14 @@ These passwords are the public local-only values from the [Kargo quickstart](htt
 2. After the GitHub workflow publishes `1.0.N`, the Kargo project `hello-world` shows that Freight.
 3. Test promotes on its own and commits the tag into `gitops/test/deployment.yaml`. Argo CD rolls test.
 4. Prod stays on the old tag until you promote the prod Stage. That commits `gitops/prod/deployment.yaml`.
+
+## Updating the Kargo chart
+
+The chart is kept in this repo, because the Argo CD repo-server cannot reach `ghcr.io` through the corporate TLS inspection. To change the version, pull it on the laptop into the same folder. Then check that the values in `argocd/kargo-application.yaml` still match the new chart's value names:
+
+```powershell
+helm pull oci://ghcr.io/akuity/kargo-charts/kargo --version <new-version> --untar --untardir install/kargo/chart
+```
 
 ## Clean up
 
