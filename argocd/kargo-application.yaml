@@ -34,6 +34,9 @@ spec:
             nodePort: 31082
           tls:
             enabled: false
+        controller:
+          # localhost:32082 is Nexus on this machine only from the node network.
+          hostNetwork: true
   destination:
     server: https://kubernetes.default.svc
     namespace: kargo

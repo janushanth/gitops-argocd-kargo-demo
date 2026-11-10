@@ -795,6 +795,8 @@ controller:
     #   cpu: 100m
     #   memory: 128Mi
 
+  ## @param controller.hostNetwork Run the controller in the node network so localhost is this machine. Off unless a values file sets it.
+  hostNetwork: false
   ## @param controller.nodeSelector Node selector for controller pods. Defaults to `global.nodeSelector`.
   nodeSelector: {}
   ## @param controller.tolerations Tolerations for controller pods. Defaults to `global.tolerations`.

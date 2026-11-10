@@ -19,7 +19,7 @@ spec:
         - name: gitRepo
           value: https://github.com/janushanth/gitops-argocd-kargo-demo.git
         - name: imageRepo
-          value: nexus.example.com:8082/hello-world
+          value: localhost:32082/hello-world
       steps:
         - uses: git-clone
           config:

@@ -6,9 +6,9 @@ metadata:
 spec:
   subscriptions:
     - image:
-        # Replace nexus.example.com:8082 with your Nexus Docker host:port.
-        # The GitHub Actions secret NEXUS_REGISTRY must be that same host:port.
-        repoURL: nexus.example.com:8082/hello-world
+        # localhost is plain HTTP for both Kargo and the local Docker engine.
+        # Jenkins pushes this same host:port, and the Deployments pull it.
+        repoURL: localhost:32082/hello-world
         insecureSkipTLSVerify: true
         imageSelectionStrategy: SemVer
         strictSemvers: true

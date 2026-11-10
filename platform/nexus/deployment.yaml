@@ -1,0 +1,76 @@
+# Local demo only. NEXUS_SECURITY_RANDOMPASSWORD=false keeps the
+# Sonatype default admin password admin123. The Docker connector listens
+# on 8082 inside the pod and is published on the machine at localhost:32082.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus
+  namespace: nexus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nexus
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      securityContext:
+        runAsUser: 200
+        runAsGroup: 200
+        fsGroup: 200
+      containers:
+        - name: nexus
+          image: sonatype/nexus3:3.61.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NEXUS_SECURITY_RANDOMPASSWORD
+              value: "false"
+            - name: INSTALL4J_ADD_VM_PARAMS
+              value: >-
+                -Xms1200m -Xmx1200m
+                -XX:MaxDirectMemorySize=2g
+                -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+          ports:
+            - name: ui
+              containerPort: 8081
+            - name: docker
+              containerPort: 8082
+              hostPort: 32082
+          resources:
+            requests:
+              cpu: 250m
+              memory: 2Gi
+            limits:
+              memory: 3Gi
+          startupProbe:
+            httpGet:
+              path: /
+              port: ui
+            periodSeconds: 10
+            failureThreshold: 60
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: ui
+            periodSeconds: 15
+            failureThreshold: 6
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: ui
+            periodSeconds: 30
+            failureThreshold: 6
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: nexus-data
+              mountPath: /nexus-data
+      volumes:
+        - name: nexus-data
+          persistentVolumeClaim:
+            claimName: nexus-data

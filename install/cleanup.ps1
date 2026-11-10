@@ -1,7 +1,6 @@
-# Removes this demo from Docker Desktop: Kargo, Argo CD, cert-manager,
-# the nginx namespaces, and their CRDs. Other workloads on the cluster stay.
-# Also puts the nginx image tags back to 1.27.5 and pushes that reset,
-# so the next demo starts from the same Git state.
+# Removes this demo from Docker Desktop and puts the Hello World image tag
+# back to 0.0.0. Other workloads on the cluster, including the my-nginx Helm
+# release, stay.
 $ErrorActionPreference = "Stop"
 if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
     $PSNativeCommandUseErrorActionPreference = $false
@@ -17,8 +16,12 @@ Write-Host "Cleaning demo resources on context $context (node $node)"
 
 function Remove-HelmRelease {
     param([string]$Name, [string]$Namespace)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     helm status $Name --namespace $Namespace --kube-context $context 1>$null 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $status = $LASTEXITCODE
+    $ErrorActionPreference = $previous
+    if ($status -ne 0) {
         Write-Host "Helm release $Name is not installed in $Namespace"
         return
     }
@@ -28,12 +31,35 @@ function Remove-HelmRelease {
     }
 }
 
-# Stop Argo CD first so it cannot recreate Kargo, then remove the Helm releases.
+# Stop Argo CD first so it cannot recreate Kargo, Jenkins, or Nexus.
 Remove-HelmRelease -Name "argocd" -Namespace "argocd"
 Remove-HelmRelease -Name "kargo" -Namespace "kargo"
 Remove-HelmRelease -Name "cert-manager" -Namespace "cert-manager"
 
+# The Kargo controller adds a finalizer that blocks namespace deletion after
+# the controller is gone. Clear those finalizers before deleting namespaces.
+$patch = Join-Path $env:TEMP "gitops-demo-clear-finalizers.json"
+[System.IO.File]::WriteAllText($patch, '{"metadata":{"finalizers":null}}', (New-Object System.Text.UTF8Encoding $false))
+
+kubectl --context $context -n kargo delete deployment --all --wait=false --ignore-not-found 1>$null 2>$null
+$finalizers = @(
+    @{ Kind = "stage"; Name = "test"; Namespace = "hello-world" },
+    @{ Kind = "stage"; Name = "prod"; Namespace = "hello-world" },
+    @{ Kind = "warehouse"; Name = "hello-world"; Namespace = "hello-world" },
+    @{ Kind = "project"; Name = "hello-world"; Namespace = "" },
+    @{ Kind = "serviceaccount"; Name = "kargo-controller"; Namespace = "kargo" }
+)
+foreach ($item in $finalizers) {
+    if ($item.Namespace) {
+        kubectl --context $context -n $item.Namespace patch $item.Kind $item.Name --type=merge --patch-file $patch 1>$null 2>$null
+    } else {
+        kubectl --context $context patch $item.Kind $item.Name --type=merge --patch-file $patch 1>$null 2>$null
+    }
+}
+
 $namespaces = @(
+    "jenkins",
+    "nexus",
     "hello-world-test",
     "hello-world-prod",
     "hello-world",
@@ -52,7 +78,11 @@ foreach ($namespace in $namespaces) {
     Write-Host "Deleting namespace $namespace"
     kubectl --context $context delete namespace $namespace --wait --timeout=180s
     if ($LASTEXITCODE -ne 0) {
-        throw "Timed out deleting namespace $namespace"
+        kubectl --context $context patch namespace $namespace --type=merge --patch-file $patch 1>$null 2>$null
+        kubectl --context $context delete namespace $namespace --wait --timeout=60s
+        if ($LASTEXITCODE -ne 0) {
+            throw "Timed out deleting namespace $namespace"
+        }
     }
 }
 
@@ -76,8 +106,8 @@ foreach ($crd in $crdList.items) {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$imagePattern = "image:\s*nexus\.example\.com:8082/hello-world:\S+"
-$imageValue = "image: nexus.example.com:8082/hello-world:0.0.0"
+$imagePattern = "image:\s*localhost:32082/hello-world:\S+"
+$imageValue = "image: localhost:32082/hello-world:0.0.0"
 $tagFiles = @(
     "gitops/test/deployment.yaml",
     "gitops/prod/deployment.yaml"

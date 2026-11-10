@@ -46,6 +46,10 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "kargo.controller.fullname" . }}
+      {{- if .Values.controller.hostNetwork }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
       {{- with .Values.controller.affinity | default .Values.global.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}

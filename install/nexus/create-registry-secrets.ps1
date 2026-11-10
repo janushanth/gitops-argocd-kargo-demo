@@ -1,5 +1,7 @@
-# Creates Nexus credentials for image pull and for the Kargo Warehouse.
-# Passwords are not written to the git repo.
+# Optional. The local demo already stores the Nexus admin login in
+# gitops/*/nexus-pull-secret.yaml and kargo/nexus-image-secret.yaml.
+# Run this only when you want a different registry user. Argo CD selfHeal
+# will put the Git copies back on the next sync.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Registry,

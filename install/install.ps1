@@ -1,7 +1,10 @@
 # Installs cert-manager and Argo CD on Docker Desktop.
-# Argo CD then installs Kargo from the chart vendored in this repo,
-# and syncs the Kargo config and the Hello World apps.
+# Argo CD then installs Kargo from the chart in this repo, plus Nexus and Jenkins.
+# Jenkins builds Hello World and pushes it to the Nexus registry on this node.
 $ErrorActionPreference = "Stop"
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 $context = "docker-desktop"
 $node = kubectl --context $context get nodes -o jsonpath="{.items[0].metadata.name}"
@@ -10,11 +13,93 @@ if ($node -ne "docker-desktop") {
     throw "Refusing to install. Context '$context' node is '$node', expected docker-desktop."
 }
 
-Write-Host "Installing on context $context (node $node)"
+Write-Host "Installing on context $context (node $node, registry localhost:32082)"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-# Upgrade-or-install, so re-running after a partial install does not fail on "name in use".
-helm upgrade --install cert-manager cert-manager `
+Write-Host "Downloading Jenkins plugins on the laptop (the image build cannot trust the company certificate)..."
+& (Join-Path $PSScriptRoot "jenkins\save-plugins.ps1") -Destination (Join-Path $repoRoot "jenkins\plugins")
+
+Write-Host "Building the Jenkins image..."
+docker build -t gitops-demo-jenkins:local (Join-Path $repoRoot "jenkins")
+if ($LASTEXITCODE -ne 0) { throw "Jenkins image build failed." }
+
+function Wait-Deployment {
+    param(
+        [string]$Namespace,
+        [string]$Name,
+        [string]$ApplicationName
+    )
+    Write-Host "Waiting for deployment $Namespace/$Name ..."
+    $deadline = (Get-Date).AddMinutes(10)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $found = $false
+    $refreshed = $false
+    do {
+        if ($ApplicationName) {
+            $message = kubectl --context $context -n argocd get application $ApplicationName -o jsonpath="{.status.conditions[?(@.type=='ComparisonError')].message}" 2>$null
+            if ($message) {
+                if (-not $refreshed) {
+                    kubectl --context $context -n argocd annotate application $ApplicationName argocd.argoproj.io/refresh=hard --overwrite 2>$null | Out-Null
+                    $refreshed = $true
+                    Start-Sleep -Seconds 15
+                    continue
+                }
+                $ErrorActionPreference = $previous
+                throw @"
+Argo CD Application '$ApplicationName' cannot sync: $message
+GitHub main does not have this path yet. Commit and push this repo, then run .\install\install.ps1 again.
+"@
+            }
+        }
+        $existing = kubectl --context $context -n $Namespace get deployment $Name --ignore-not-found -o name 2>$null
+        if ($LASTEXITCODE -eq 0 -and $existing) {
+            $found = $true
+            break
+        }
+        Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
+    $ErrorActionPreference = $previous
+    if (-not $found) {
+        throw "Deployment $Namespace/$Name was never created. Check the $ApplicationName Application in Argo CD."
+    }
+    kubectl --context $context -n $Namespace wait --for=condition=available "deployment/$Name" --timeout=600s
+    if ($LASTEXITCODE -ne 0) {
+        throw "Deployment $Namespace/$Name did not become available."
+    }
+}
+
+# The company proxy sometimes closes a chart download early. Helm then reports EOF.
+# Retry with HTTP/2 disabled. Upgrade-or-install, so a second run does not fail on "name in use".
+function Invoke-Helm {
+    param(
+        [string]$Purpose,
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$HelmArgs
+    )
+    $saved = $env:GODEBUG
+    if ([string]::IsNullOrEmpty($env:GODEBUG)) {
+        $env:GODEBUG = "http2client=0"
+    } elseif ($env:GODEBUG -notmatch "http2client=0") {
+        $env:GODEBUG = "$($env:GODEBUG),http2client=0"
+    }
+    try {
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            & helm @HelmArgs
+            if ($LASTEXITCODE -eq 0) { return }
+            Write-Host "$Purpose could not reach the chart repository (attempt $attempt of 3). Retrying in 5 seconds."
+            Start-Sleep -Seconds 5
+        }
+        throw "$Purpose failed. The chart repository closed the connection. Run .\install\install.ps1 again."
+    } finally {
+        if ($null -eq $saved) {
+            Remove-Item Env:GODEBUG -ErrorAction SilentlyContinue
+        } else {
+            $env:GODEBUG = $saved
+        }
+    }
+}
+
+Invoke-Helm -Purpose "cert-manager install" upgrade --install cert-manager cert-manager `
     --kube-context $context `
     --repo https://charts.jetstack.io `
     --version 1.21.2 `
@@ -22,9 +107,8 @@ helm upgrade --install cert-manager cert-manager `
     --create-namespace `
     --set crds.enabled=true `
     --wait
-if ($LASTEXITCODE -ne 0) { throw "cert-manager install failed." }
 
-helm upgrade --install argocd argo-cd `
+Invoke-Helm -Purpose "Argo CD install" upgrade --install argocd argo-cd `
     --kube-context $context `
     --repo https://argoproj.github.io/argo-helm `
     --version 10.10.5 `
@@ -37,38 +121,56 @@ helm upgrade --install argocd argo-cd `
     --set server.service.nodePortHttp=31080 `
     --set 'server.extraArgs={--insecure}' `
     --wait
-if ($LASTEXITCODE -ne 0) { throw "Argo CD install failed." }
+
+# Argo CD creates a namespace only after that Application syncs successfully.
+# These waits run before that sync, and a missing namespace makes kubectl
+# write an error that stops this script. Create the namespaces here.
+$demoNamespaces = @(
+    "kargo",
+    "nexus",
+    "jenkins",
+    "hello-world",
+    "hello-world-test",
+    "hello-world-prod"
+)
+foreach ($namespace in $demoNamespaces) {
+    kubectl --context $context create namespace $namespace --dry-run=client -o yaml | kubectl --context $context apply -f -
+    if ($LASTEXITCODE -ne 0) { throw "Could not create namespace $namespace." }
+}
 
 kubectl --context $context apply -f (Join-Path $repoRoot "argocd\repository.yaml")
 if ($LASTEXITCODE -ne 0) { throw "Could not apply the Git repository secret to Argo CD." }
 kubectl --context $context apply -f (Join-Path $repoRoot "argocd\kargo-application.yaml")
 if ($LASTEXITCODE -ne 0) { throw "Could not apply the Kargo Argo CD Application." }
 
-# Argo CD creates kargo-api after it renders the chart. Poll for it instead of
-# failing on the first check, then wait for it to become available.
-Write-Host "Waiting for Argo CD to create the Kargo API deployment..."
-$deadline = (Get-Date).AddMinutes(10)
-do {
-    kubectl --context $context -n kargo get deployment kargo-api *> $null
-    if ($LASTEXITCODE -eq 0) { break }
-    Start-Sleep -Seconds 10
-} while ((Get-Date) -lt $deadline)
-if ($LASTEXITCODE -ne 0) {
-    throw "kargo-api was never created. Check the kargo Application in Argo CD (Sync status and Conditions)."
-}
-kubectl --context $context -n kargo wait --for=condition=available deployment/kargo-api --timeout=600s
-if ($LASTEXITCODE -ne 0) { throw "Kargo API did not become available. Check the kargo Application in Argo CD." }
+Wait-Deployment -Namespace "kargo" -Name "kargo-api" -ApplicationName "kargo"
 
-kubectl --context $context apply -f (Join-Path $repoRoot "argocd\kargo-config-application.yaml")
-if ($LASTEXITCODE -ne 0) { throw "Could not apply the Kargo config Application." }
-kubectl --context $context apply -f (Join-Path $repoRoot "argocd\hello-world-test-application.yaml")
-if ($LASTEXITCODE -ne 0) { throw "Could not apply the hello-world-test Application." }
-kubectl --context $context apply -f (Join-Path $repoRoot "argocd\hello-world-prod-application.yaml")
-if ($LASTEXITCODE -ne 0) { throw "Could not apply the hello-world-prod Application." }
+$apps = @(
+    "argocd\nexus-application.yaml",
+    "argocd\jenkins-application.yaml",
+    "argocd\kargo-config-application.yaml",
+    "argocd\hello-world-test-application.yaml",
+    "argocd\hello-world-prod-application.yaml"
+)
+foreach ($app in $apps) {
+    kubectl --context $context apply -f (Join-Path $repoRoot $app)
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply $app." }
+}
+
+Wait-Deployment -Namespace "nexus" -Name "nexus" -ApplicationName "nexus"
+kubectl --context $context -n nexus wait --for=condition=complete job/nexus-docker-repo --timeout=600s
+if ($LASTEXITCODE -ne 0) { throw "Nexus did not get its Docker repository. Check job nexus-docker-repo." }
+
+Wait-Deployment -Namespace "jenkins" -Name "jenkins" -ApplicationName "jenkins"
 
 Write-Host ""
-Write-Host "Argo CD: http://localhost:31080  admin / admin"
-Write-Host "Kargo:   http://localhost:31081  password admin"
-Write-Host "Next, create the local secrets (values stay out of Git):"
+Write-Host "Argo CD:  http://localhost:31080  admin / admin"
+Write-Host "Kargo:    http://localhost:31081  password admin"
+Write-Host "Jenkins:  http://localhost:32080  admin / admin"
+Write-Host "Nexus:    http://localhost:32081  admin / admin123"
+Write-Host ""
+Write-Host "Create the Git credential Kargo uses to commit promotions. Do not paste the token into chat."
 Write-Host "  .\install\kargo\create-git-secret.ps1 -Token <github-pat>"
-Write-Host "  .\install\nexus\create-registry-secrets.ps1 -Registry <host:port> -Username <user> -Password <password>"
+Write-Host ""
+Write-Host "In Jenkins, run the hello-world job. It pushes localhost:32082/hello-world:1.0.<time>."
+Write-Host "Kargo promotes test on its own. Promote prod in the Kargo UI."
