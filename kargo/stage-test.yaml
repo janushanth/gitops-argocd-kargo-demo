@@ -23,6 +23,9 @@ spec:
         - uses: git-clone
           config:
             repoURL: ${{ vars.gitRepo }}
+            # Corporate TLS inspection: the git-clone step needs this flag.
+            # The gitops-repo secret field alone is not used by promotions.
+            insecureSkipTLSVerify: true
             checkout:
               - branch: main
                 path: ./src
