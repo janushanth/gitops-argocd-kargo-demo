@@ -177,11 +177,12 @@ Invoke-Helm -Purpose "Argo CD install" upgrade --install argocd argo-cd `
 # Argo CD creates a namespace only after that Application syncs successfully.
 # These waits run before that sync, and a missing namespace makes kubectl
 # write an error that stops this script. Create the namespaces here.
+# hello-world is NOT in this list: Kargo creates it from the Project, and Kargo
+# rejects a Project whose namespace already exists without its label.
 $demoNamespaces = @(
     "kargo",
     "nexus",
     "jenkins",
-    "hello-world",
     "hello-world-test",
     "hello-world-prod"
 )
