@@ -16,6 +16,58 @@ if ($node -ne "docker-desktop") {
 Write-Host "Installing on context $context (node $node, registry localhost:32082)"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+# Pull every image the demo runs before anything waits on a pod. Docker Desktop
+# Kubernetes reads the same local image store, so a pull here means a pod does
+# not sit in ContainerCreating while the laptop downloads a large image.
+# Keep this list in step with the chart versions and image tags in this repo.
+$demoImages = @(
+    "quay.io/jetstack/cert-manager-cainjector:v1.21.2",
+    "quay.io/jetstack/cert-manager-controller:v1.21.2",
+    "quay.io/jetstack/cert-manager-startupapicheck:v1.21.2",
+    "quay.io/jetstack/cert-manager-webhook:v1.21.2",
+    "quay.io/argoproj/argocd:v3.5.5",
+    "ecr-public.aws.com/docker/library/redis:8.6.4-alpine",
+    "ghcr.io/akuity/kargo:v1.12.5",
+    "sonatype/nexus3:3.61.0",
+    "python:3.12-alpine",
+    "jenkins/jenkins:2.541.3-lts-jdk17",
+    "docker:27-cli",
+    "public.ecr.aws/docker/library/nginx:1.27.5"
+)
+
+function Invoke-DockerPull {
+    param([string]$Image)
+    # docker writes progress to stderr. Let the exit code decide, not the error stream.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            docker pull $Image *> $null
+            if ($LASTEXITCODE -eq 0) { return }
+            Write-Host "docker pull $Image failed (attempt $attempt of 3). Retrying in 10 seconds."
+            Start-Sleep -Seconds 10
+        }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    throw "Could not pull $Image. Check the network or the company proxy, then run .\install\install.ps1 again."
+}
+
+Write-Host "Pulling $($demoImages.Count) images (skipped when already present)..."
+foreach ($image in $demoImages) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    docker image inspect $image *> $null
+    $present = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $previous
+    if ($present) {
+        Write-Host "  present  $image"
+        continue
+    }
+    Write-Host "  pulling  $image"
+    Invoke-DockerPull -Image $image
+}
+
 Write-Host "Downloading Jenkins plugins on the laptop (the image build cannot trust the company certificate)..."
 & (Join-Path $PSScriptRoot "jenkins\save-plugins.ps1") -Destination (Join-Path $repoRoot "jenkins\plugins")
 

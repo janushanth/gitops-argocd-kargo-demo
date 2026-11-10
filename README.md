@@ -41,6 +41,8 @@ Local demo passwords are in the manifests: Jenkins `admin` / `admin`, Nexus `adm
 
 Kubernetes is enabled in Docker Desktop. The script refuses to run unless the node name is `docker-desktop`. No Docker Engine change is required.
 
+The install pulls every image it needs before the pods start, so a fresh laptop does not sit in `ContainerCreating` while a large image downloads. Each pull is retried three times. The first run takes longer because the images are downloaded.
+
 Argo CD clones `https://github.com/janushanth/gitops-argocd-kargo-demo.git` branch `main`. Push this repo to that branch before you install. A local-only commit is invisible to Argo CD, and the install will sync the older files that still pull Kargo from ghcr.io.
 
 ## Install
