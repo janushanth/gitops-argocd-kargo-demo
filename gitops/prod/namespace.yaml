@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hello-world-prod
+  labels:
+    # Goldilocks only creates recommendations in namespaces with this label.
+    goldilocks.fairwinds.com/enabled: "true"

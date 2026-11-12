@@ -67,6 +67,7 @@ $namespaces = @(
     "nginx-prod",
     "nginx",
     "kargo",
+    "goldilocks",
     "argocd",
     "cert-manager"
 )
@@ -103,6 +104,14 @@ foreach ($crd in $crdList.items) {
         Write-Host "Deleting CRD $name"
         kubectl --context $context delete crd $name --wait=false
     }
+}
+
+# VPA CRDs installed with Goldilocks. HorizontalPodAutoscaler is built in and is not in this list.
+foreach ($crdName in @(
+    "verticalpodautoscalers.autoscaling.k8s.io",
+    "verticalpodautoscalercheckpoints.autoscaling.k8s.io"
+)) {
+    kubectl --context $context delete crd $crdName --wait=false --ignore-not-found
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot

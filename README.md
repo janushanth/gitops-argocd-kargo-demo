@@ -2,7 +2,7 @@
 
 Local Docker Desktop demo.
 
-Argo CD installs Kargo, Nexus, and Jenkins. Jenkins builds the Hello World image and pushes it to Nexus on this machine. Kargo sees that tag and promotes it. Argo CD deploys the new tag.
+Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks. Jenkins builds the Hello World image and pushes it to Nexus on this machine. Kargo sees that tag and promotes it. Argo CD deploys the new tag. Goldilocks shows CPU and memory recommendations for the Hello World namespaces. It also installs metrics-server, which Docker Desktop does not include.
 
 ```text
 Jenkins job hello-world
@@ -28,7 +28,8 @@ The registry is `localhost:32082`. Docker already allows plain HTTP to localhost
 | `jenkins/Dockerfile` | Jenkins plus the plugins and a Docker client. Built on the laptop by the install script |
 | `platform/jenkins` | Jenkins and a Docker daemon in the same pod |
 | `platform/nexus` | Nexus, and a Job that creates the Docker hosted repository |
-| `install/install.ps1` | Installs cert-manager and Argo CD. Argo CD installs Kargo, Nexus, and Jenkins |
+| `install/goldilocks/chart/goldilocks` | Goldilocks 11.2.1 Helm chart, including VPA. Argo CD reads it from this folder |
+| `install/install.ps1` | Installs cert-manager and Argo CD. Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks |
 | `install/kargo/chart/kargo` | Kargo 1.12.5 Helm chart. Argo CD reads it from this folder |
 | `install/cleanup.ps1` | Removes the demo and puts the image tag back to `0.0.0` |
 | `argocd/` | Argo CD Applications |
@@ -60,7 +61,7 @@ Then create the Git credential. Do not paste the token into chat.
 .\install\kargo\create-git-secret.ps1 -Token "<github-pat>"
 ```
 
-In Argo CD you should see `kargo`, `kargo-config`, `nexus`, `jenkins`, `hello-world-test`, and `hello-world-prod`.
+In Argo CD you should see `kargo`, `kargo-config`, `nexus`, `jenkins`, `goldilocks`, `hello-world-test`, and `hello-world-prod`.
 
 Open Jenkins at http://localhost:32080 and run the job `hello-world`. The first pods stay on tag `0.0.0` until that job has pushed an image and Kargo has promoted it.
 
@@ -74,6 +75,7 @@ Open Jenkins at http://localhost:32080 and run the job `hello-world`. The first 
 | Nexus | http://localhost:32081 | `admin` / `admin123` |
 | Hello World test | http://localhost:31083 | |
 | Hello World prod | http://localhost:31084 | |
+| Goldilocks | http://localhost:31085 | |
 
 ## What you should see
 
@@ -99,4 +101,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install\cleanup.ps1
 ```
 
-This removes Argo CD, Kargo, Nexus, Jenkins, cert-manager, and the Hello World namespaces. It also pushes the image tags in Git back to `0.0.0`.
+This removes Argo CD, Kargo, Nexus, Jenkins, Goldilocks, cert-manager, and the Hello World namespaces. It also pushes the image tags in Git back to `0.0.0`.

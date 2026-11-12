@@ -1,5 +1,5 @@
 # Installs cert-manager and Argo CD on Docker Desktop.
-# Argo CD then installs Kargo from the chart in this repo, plus Nexus and Jenkins.
+# Argo CD then installs Kargo from the chart in this repo, plus Nexus, Jenkins, and Goldilocks.
 # Jenkins builds Hello World and pushes it to the Nexus registry on this node.
 $ErrorActionPreference = "Stop"
 if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
@@ -32,7 +32,12 @@ $demoImages = @(
     "python:3.12-alpine",
     "jenkins/jenkins:2.541.3-lts-jdk17",
     "docker:27-cli",
-    "public.ecr.aws/docker/library/nginx:1.27.5"
+    "public.ecr.aws/docker/library/nginx:1.27.5",
+    "us-docker.pkg.dev/fairwinds-ops/oss/goldilocks:v4.16.3",
+    "registry.k8s.io/autoscaling/vpa-recommender:1.7.1",
+    "registry.k8s.io/autoscaling/vpa-admission-controller:1.7.1",
+    "registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20230312-helm-chart-4.5.2-28-g66a760794",
+    "registry.k8s.io/metrics-server/metrics-server:v0.9.0"
 )
 
 function Invoke-DockerPull {
@@ -184,7 +189,8 @@ $demoNamespaces = @(
     "nexus",
     "jenkins",
     "hello-world-test",
-    "hello-world-prod"
+    "hello-world-prod",
+    "goldilocks"
 )
 foreach ($namespace in $demoNamespaces) {
     kubectl --context $context create namespace $namespace --dry-run=client -o yaml | kubectl --context $context apply -f -
@@ -203,7 +209,8 @@ $apps = @(
     "argocd\jenkins-application.yaml",
     "argocd\kargo-config-application.yaml",
     "argocd\hello-world-test-application.yaml",
-    "argocd\hello-world-prod-application.yaml"
+    "argocd\hello-world-prod-application.yaml",
+    "argocd\goldilocks-application.yaml"
 )
 foreach ($app in $apps) {
     kubectl --context $context apply -f (Join-Path $repoRoot $app)
@@ -215,12 +222,14 @@ kubectl --context $context -n nexus wait --for=condition=complete job/nexus-dock
 if ($LASTEXITCODE -ne 0) { throw "Nexus did not get its Docker repository. Check job nexus-docker-repo." }
 
 Wait-Deployment -Namespace "jenkins" -Name "jenkins" -ApplicationName "jenkins"
+Wait-Deployment -Namespace "goldilocks" -Name "goldilocks-dashboard" -ApplicationName "goldilocks"
 
 Write-Host ""
-Write-Host "Argo CD:  http://localhost:31080  admin / admin"
-Write-Host "Kargo:    http://localhost:31081  password admin"
-Write-Host "Jenkins:  http://localhost:32080  admin / admin"
-Write-Host "Nexus:    http://localhost:32081  admin / admin123"
+Write-Host "Argo CD:    http://localhost:31080  admin / admin"
+Write-Host "Kargo:      http://localhost:31081  password admin"
+Write-Host "Jenkins:    http://localhost:32080  admin / admin"
+Write-Host "Nexus:      http://localhost:32081  admin / admin123"
+Write-Host "Goldilocks: http://localhost:31085"
 Write-Host ""
 Write-Host "Create the Git credential Kargo uses to commit promotions. Do not paste the token into chat."
 Write-Host "  .\install\kargo\create-git-secret.ps1 -Token <github-pat>"

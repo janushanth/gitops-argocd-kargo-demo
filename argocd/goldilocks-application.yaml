@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: goldilocks
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # Chart vendored in this repo (helm pull of goldilocks 11.2.1), so Argo CD
+    # reads it from GitHub instead of charts.fairwinds.com.
+    repoURL: https://github.com/janushanth/gitops-argocd-kargo-demo.git
+    targetRevision: main
+    path: install/goldilocks/chart/goldilocks
+    helm:
+      releaseName: goldilocks
+      valuesObject:
+        image:
+          # The install script pre-pulls this image. Always would ask the
+          # registry again from inside the cluster.
+          pullPolicy: IfNotPresent
+        dashboard:
+          replicaCount: 1
+          service:
+            type: NodePort
+            nodePort: 31085
+        # Docker Desktop has no metrics-server. VPA cannot recommend without it.
+        # kubelet-insecure-tls is required for the local cluster certificate.
+        metrics-server:
+          enabled: true
+          args:
+            - --kubelet-insecure-tls
+        vpa:
+          enabled: true
+          # Recommendations only. The updater would change running pods.
+          updater:
+            enabled: false
+          recommender:
+            image:
+              pullPolicy: IfNotPresent
+          admissionController:
+            image:
+              pullPolicy: IfNotPresent
+            certGen:
+              image:
+                pullPolicy: IfNotPresent
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: goldilocks
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
