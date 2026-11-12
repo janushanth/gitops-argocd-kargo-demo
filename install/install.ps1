@@ -210,7 +210,8 @@ $apps = @(
     "argocd\kargo-config-application.yaml",
     "argocd\hello-world-test-application.yaml",
     "argocd\hello-world-prod-application.yaml",
-    "argocd\goldilocks-application.yaml"
+    "argocd\goldilocks-application.yaml",
+    "argocd\default-namespace-application.yaml"
 )
 foreach ($app in $apps) {
     kubectl --context $context apply -f (Join-Path $repoRoot $app)

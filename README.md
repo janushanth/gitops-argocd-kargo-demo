@@ -2,7 +2,7 @@
 
 Local Docker Desktop demo.
 
-Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks. Jenkins builds the Hello World image and pushes it to Nexus on this machine. Kargo sees that tag and promotes it. Argo CD deploys the new tag. Goldilocks watches every namespace except the Kubernetes system namespaces and its own. A new app shows up in the dashboard without a namespace label. It also installs metrics-server, which Docker Desktop does not include.
+Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks. Jenkins builds the Hello World image and pushes it to Nexus on this machine. Kargo sees that tag and promotes it. Argo CD deploys the new tag. Goldilocks watches every namespace except the Kubernetes system namespaces and its own. The label `goldilocks.fairwinds.com/enabled=true` is also set in Git on `hello-world-test`, `hello-world-prod`, `jenkins`, `nexus`, `kargo`, and `default`. It also installs metrics-server, which Docker Desktop does not include.
 
 ```text
 Jenkins job hello-world
