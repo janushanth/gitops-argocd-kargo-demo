@@ -23,6 +23,14 @@ spec:
           service:
             type: NodePort
             nodePort: 31085
+          # Show every namespace. A new app appears without a namespace label.
+          flags:
+            on-by-default: true
+        controller:
+          flags:
+            on-by-default: true
+            # System namespaces stay out of the recommendation list.
+            exclude-namespaces: kube-system,kube-public,kube-node-lease,goldilocks
         # Docker Desktop has no metrics-server. VPA cannot recommend without it.
         # kubelet-insecure-tls is required for the local cluster certificate.
         metrics-server:
