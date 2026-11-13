@@ -17,7 +17,7 @@ spec:
         - name: nexus-pull
       containers:
         - name: hello-world
-          image: localhost:32082/hello-world:1.0.1794543275
+          image: localhost:32082/hello-world:1.0.1794551650
           imagePullPolicy: Always
           ports:
             - containerPort: 80
