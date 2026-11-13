@@ -13,6 +13,9 @@ spec:
     server: https://kubernetes.default.svc
     namespace: nexus
   syncPolicy:
+    managedNamespaceMetadata:
+      labels:
+        goldilocks.fairwinds.com/enabled: "true"
     automated:
       prune: true
       selfHeal: true

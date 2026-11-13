@@ -13,10 +13,14 @@ spec:
     server: https://kubernetes.default.svc
     namespace: default
   syncPolicy:
+    # No workload lives in this path. The Application only labels default,
+    # where the existing my-nginx release runs. Prune stays off.
+    managedNamespaceMetadata:
+      labels:
+        goldilocks.fairwinds.com/enabled: "true"
     automated:
-      # Prune stays off. This Application only adds the Goldilocks label.
-      # Prune would delete the default namespace, including the existing my-nginx release.
       prune: false
       selfHeal: true
     syncOptions:
+      - CreateNamespace=true
       - ServerSideApply=true
