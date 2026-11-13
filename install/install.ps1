@@ -156,19 +156,18 @@ function Invoke-Helm {
     }
 }
 
-Invoke-Helm -Purpose "cert-manager install" upgrade --install cert-manager cert-manager `
+# Both charts are in this repo so the install does not download them.
+Invoke-Helm -Purpose "cert-manager install" upgrade --install cert-manager (Join-Path $repoRoot "install\cert-manager\chart\cert-manager") `
     --kube-context $context `
-    --repo https://charts.jetstack.io `
-    --version 1.21.2 `
     --namespace cert-manager `
     --create-namespace `
     --set crds.enabled=true `
     --wait
 
-Invoke-Helm -Purpose "Argo CD install" upgrade --install argocd argo-cd `
+# The chart is in this repo. Helm's download of the GitHub release asset
+# is closed early by the company proxy (EOF).
+Invoke-Helm -Purpose "Argo CD install" upgrade --install argocd (Join-Path $repoRoot "install\argocd\chart\argo-cd") `
     --kube-context $context `
-    --repo https://argoproj.github.io/argo-helm `
-    --version 10.10.5 `
     --namespace argocd `
     --create-namespace `
     --set 'configs.secret.argocdServerAdminPassword=$2a$10$5vm8wXaSdbuff0m9l21JdevzXBzJFPCi8sy6OOnpZMAG.fOXL7jvO' `

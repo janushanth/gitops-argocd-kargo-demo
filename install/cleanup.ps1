@@ -13,6 +13,9 @@ if ($node -ne "docker-desktop") {
 }
 
 Write-Host "Cleaning demo resources on context $context (node $node)"
+# kubectl and helm write normal failures to stderr. Stop would abort the script
+# before LASTEXITCODE is checked. throw below still stops the script.
+$ErrorActionPreference = "Continue"
 
 function Remove-HelmRelease {
     param([string]$Name, [string]$Namespace)
@@ -36,12 +39,43 @@ Remove-HelmRelease -Name "argocd" -Namespace "argocd"
 Remove-HelmRelease -Name "kargo" -Namespace "kargo"
 Remove-HelmRelease -Name "cert-manager" -Namespace "cert-manager"
 
+# kubectl writes its errors to stderr. With ErrorActionPreference Stop, PowerShell
+# treats that as a terminating error even when the command is allowed to fail.
+function Invoke-KubectlAllowFailure {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$KubectlArgs)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & kubectl --context $context @KubectlArgs 1>$null 2>$null
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+# Kargo is installed by Argo CD, so the Helm uninstall above does not remove
+# its admission webhooks. The webhook server is already gone, and Kargo's
+# failure policy rejects every later change, including the finalizer patch.
+Write-Host "Removing admission webhooks"
+foreach ($kind in @("mutatingwebhookconfiguration", "validatingwebhookconfiguration")) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $names = & kubectl --context $context get $kind -o jsonpath="{.items[*].metadata.name}" 2>$null
+    $ErrorActionPreference = $previous
+    if (-not $names) { continue }
+    foreach ($name in ($names -split "\s+")) {
+        if ($name -match "kargo|goldilocks|vpa") {
+            Invoke-KubectlAllowFailure delete $kind $name --ignore-not-found | Out-Null
+        }
+    }
+}
+
 # The Kargo controller adds a finalizer that blocks namespace deletion after
 # the controller is gone. Clear those finalizers before deleting namespaces.
 $patch = Join-Path $env:TEMP "gitops-demo-clear-finalizers.json"
 [System.IO.File]::WriteAllText($patch, '{"metadata":{"finalizers":null}}', (New-Object System.Text.UTF8Encoding $false))
 
-kubectl --context $context -n kargo delete deployment --all --wait=false --ignore-not-found 1>$null 2>$null
+Invoke-KubectlAllowFailure -n kargo delete deployment --all --wait=false --ignore-not-found | Out-Null
 $finalizers = @(
     @{ Kind = "stage"; Name = "test"; Namespace = "hello-world" },
     @{ Kind = "stage"; Name = "prod"; Namespace = "hello-world" },
@@ -51,9 +85,9 @@ $finalizers = @(
 )
 foreach ($item in $finalizers) {
     if ($item.Namespace) {
-        kubectl --context $context -n $item.Namespace patch $item.Kind $item.Name --type=merge --patch-file $patch 1>$null 2>$null
+        Invoke-KubectlAllowFailure -n $item.Namespace patch $item.Kind $item.Name --type=merge --patch-file $patch | Out-Null
     } else {
-        kubectl --context $context patch $item.Kind $item.Name --type=merge --patch-file $patch 1>$null 2>$null
+        Invoke-KubectlAllowFailure patch $item.Kind $item.Name --type=merge --patch-file $patch | Out-Null
     }
 }
 
@@ -64,23 +98,53 @@ $namespaces = @(
     "hello-world-prod",
     "hello-world",
     "kargo",
+    "kargo-shared-resources",
+    "kargo-system-resources",
     "goldilocks",
     "argocd",
     "cert-manager"
 )
+# The Goldilocks metrics APIService points at a Service in the goldilocks
+# namespace. While that APIService exists, Kubernetes will not finish deleting
+# the namespace.
+Write-Host "Removing API services that point at demo namespaces"
+$previous = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$apiJson = kubectl --context $context get apiservice -o json 2>$null
+$ErrorActionPreference = $previous
+if ($apiJson) {
+    foreach ($api in ($apiJson | ConvertFrom-Json).items) {
+        $serviceNamespace = $api.spec.service.namespace
+        if ($serviceNamespace -and $namespaces -contains $serviceNamespace) {
+            Write-Host "Deleting apiservice $($api.metadata.name)"
+            Invoke-KubectlAllowFailure delete apiservice $api.metadata.name --wait=false | Out-Null
+        }
+    }
+}
 foreach ($namespace in $namespaces) {
     kubectl --context $context get namespace $namespace 1>$null 2>$null
     if ($LASTEXITCODE -ne 0) {
         continue
     }
     Write-Host "Deleting namespace $namespace"
-    kubectl --context $context delete namespace $namespace --wait --timeout=180s
-    if ($LASTEXITCODE -ne 0) {
-        kubectl --context $context patch namespace $namespace --type=merge --patch-file $patch 1>$null 2>$null
-        kubectl --context $context delete namespace $namespace --wait --timeout=60s
-        if ($LASTEXITCODE -ne 0) {
-            throw "Timed out deleting namespace $namespace"
-        }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    kubectl --context $context delete namespace $namespace --wait --timeout=180s 1>$null 2>$null
+    $deleted = $LASTEXITCODE
+    $ErrorActionPreference = $previous
+    if ($deleted -eq 0) { continue }
+    # The delete can time out in the same moment the namespace disappears.
+    # A missing namespace is the result we want.
+    $stillThere = Invoke-KubectlAllowFailure get namespace $namespace
+    if ($stillThere -ne 0) { continue }
+    Invoke-KubectlAllowFailure patch namespace $namespace --type=merge --patch-file $patch | Out-Null
+    $ErrorActionPreference = "Continue"
+    kubectl --context $context delete namespace $namespace --wait --timeout=60s 1>$null 2>$null
+    $deleted = $LASTEXITCODE
+    $ErrorActionPreference = $previous
+    $stillThere = Invoke-KubectlAllowFailure get namespace $namespace
+    if ($deleted -ne 0 -and $stillThere -eq 0) {
+        throw "Timed out deleting namespace $namespace"
     }
 }
 

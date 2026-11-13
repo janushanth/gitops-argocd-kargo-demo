@@ -1,0 +1,38 @@
+# Test VPA for all components
+crds:
+  keep: false
+
+controller:
+  vpa:
+    enabled: true
+    recommenders:
+      - name: test-recommender
+    startupBoost:
+      cpu:
+        type: Factor
+        factor: 2
+        durationSeconds: 10
+
+server:
+  vpa:
+    enabled: true
+
+repoServer:
+  vpa:
+    enabled: true
+
+applicationSet:
+  vpa:
+    enabled: true
+
+notifications:
+  vpa:
+    enabled: true
+
+dex:
+  vpa:
+    enabled: true
+
+redis:
+  vpa:
+    enabled: true
