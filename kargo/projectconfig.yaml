@@ -7,7 +7,7 @@ spec:
   promotionPolicies:
     - stageSelector:
         name: test
-      autoPromotionEnabled: true
+      autoPromotionEnabled: false
     - stageSelector:
         name: prod
       autoPromotionEnabled: false

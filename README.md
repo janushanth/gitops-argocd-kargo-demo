@@ -8,14 +8,14 @@ Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks. Jenkins builds the Hello
 Jenkins job hello-world
   -> Nexus  localhost:32082/hello-world:1.0.<time>
   -> Kargo Warehouse
-  -> promote test (automatic) -> gitops/test
-  -> promote prod (manual)    -> gitops/prod
+  -> promote test (manual) -> gitops/test
+  -> promote prod (manual) -> gitops/prod
   -> Argo CD rolls the pods
 ```
 
 | Environment | Manifest | Starts at | Promotion |
 |---|---|---|---|
-| test | `gitops/test/deployment.yaml` | `0.0.0` | Automatic for tags `1.0.N` |
+| test | `gitops/test/deployment.yaml` | `0.0.0` | Manual in the Kargo UI |
 | prod | `gitops/prod/deployment.yaml` | `0.0.0` | Manual in the Kargo UI, after test |
 
 The registry is `localhost:32082`. Docker already allows plain HTTP to localhost, so the Docker Engine JSON stays as it is. The same host and port are in the Jenkins job, the Warehouse, and the Deployments.
@@ -28,6 +28,8 @@ The registry is `localhost:32082`. Docker already allows plain HTTP to localhost
 | `jenkins/Dockerfile` | Jenkins plus the plugins and a Docker client. Built on the laptop by the install script |
 | `platform/jenkins` | Jenkins and a Docker daemon in the same pod |
 | `platform/nexus` | Nexus, and a Job that creates the Docker hosted repository |
+| `install/cert-manager/chart/cert-manager` | cert-manager 1.21.2 Helm chart. The install script reads it from this folder |
+| `install/argocd/chart/argo-cd` | Argo CD 10.10.5 Helm chart. The install script reads it from this folder |
 | `install/goldilocks/chart/goldilocks` | Goldilocks 11.2.1 Helm chart, including VPA. Argo CD reads it from this folder |
 | `install/install.ps1` | Installs cert-manager and Argo CD. Argo CD installs Kargo, Nexus, Jenkins, and Goldilocks |
 | `install/kargo/chart/kargo` | Kargo 1.12.5 Helm chart. Argo CD reads it from this folder |
@@ -81,8 +83,8 @@ Open Jenkins at http://localhost:32080 and run the job `hello-world`. The first 
 
 1. The Jenkins job pushes `localhost:32082/hello-world:1.0.<time>`.
 2. The Kargo project `hello-world` shows that Freight.
-3. Test promotes on its own and commits the tag into `gitops/test/deployment.yaml`. Argo CD rolls test.
-4. Prod stays on the old tag until you promote the prod Stage. That commits `gitops/prod/deployment.yaml`.
+3. Promote the test Stage yourself. That commits the tag into `gitops/test/deployment.yaml`. Argo CD rolls test.
+4. Prod stays on the old tag until you choose Promote from upstream on the prod Stage. That commits `gitops/prod/deployment.yaml`.
 
 The page shows `version 1.0.<time>` after the pod is running.
 
